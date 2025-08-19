@@ -1,151 +1,237 @@
-import React, { useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { LineChart } from 'react-native-chart-kit';
+"use client"
 
-function calcularParcelasConstantRate({ principal, months, annualRate }) {
-  const r = annualRate / 100 / 12;
-  if (r === 0) return { monthly: principal / months, total: principal };
-  const pow = Math.pow(1 + r, months);
-  const monthly = (principal * r * pow) / (pow - 1);
-  const total = monthly * months;
-  return { monthly, total };
-}
-
-function calcularSAC({ principal, months, annualRate }) {
-  const amortizacaoConst = principal / months;
-  const r = annualRate / 100 / 12;
-  let saldo = principal;
-  const rows = [];
-  for (let m = 1; m <= months; m++) {
-    const juros = saldo * r;
-    const prestacao = amortizacaoConst + juros;
-    saldo = Math.max(0, saldo - amortizacaoConst);
-    rows.push({ mes: m, amortizacao: amortizacaoConst, juros, prestacao, saldo });
-  }
-  return rows;
-}
+import { useState, useEffect } from "react"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native"
+import { useLocalSearchParams, router } from "expo-router"
 
 export default function Results() {
-  const params = useLocalSearchParams();
-  const router = useRouter();
+  const params = useLocalSearchParams()
+  const [tabelaSAC, setTabelaSAC] = useState([])
+  const [resumo, setResumo] = useState({})
 
-  const valorImovel = Number(params.valorImovel) || 0;
-  const entrada = Number(params.entrada) || 0;
-  const prazoAnos = Number(params.prazoAnos) || 30;
-  const taxaAnual = Number(params.taxaAnual) || 1;
+  useEffect(() => {
+    calcularSAC()
+  }, [])
 
-  const principal = Math.max(0, valorImovel - entrada);
-  const months = Math.max(1, Math.trunc(prazoAnos * 12));
+  const calcularSAC = () => {
+    const valorFinanciado = Number.parseFloat(params.valorFinanciado)
+    const prazo = Number.parseInt(params.prazo)
+    const taxaJuros = Number.parseFloat(params.juros) / 100
 
-  const priceResult = calcularParcelasConstantRate({ principal, months, annualRate: taxaAnual });
-  const sacRows = calcularSAC({ principal, months, annualRate: taxaAnual });
+    const amortizacao = valorFinanciado / prazo
+    let saldoDevedor = valorFinanciado
+    const tabela = []
+    let totalJuros = 0
 
-  const comp20 = calcularParcelasConstantRate({ principal, months: 20 * 12, annualRate: taxaAnual });
-  const comp30 = calcularParcelasConstantRate({ principal, months: 30 * 12, annualRate: taxaAnual });
+    for (let i = 1; i <= prazo; i++) {
+      const juros = saldoDevedor * taxaJuros
+      const prestacao = amortizacao + juros
 
-  const chartData = useMemo(() => {
-    const labels = [];
-    const data = [];
-    const step = Math.max(1, Math.floor(months / 12));
-    for (let i = 0; i < months; i += step) {
-      const row = sacRows[i];
-      if (row) {
-        labels.push(String(Math.ceil((i + 1) / 12) + 'y'));
-        data.push(Number(row.prestacao.toFixed(2)));
-      }
+      tabela.push({
+        parcela: i,
+        prestacao: prestacao,
+        juros: juros,
+        amortizacao: amortizacao,
+        saldoDevedor: saldoDevedor - amortizacao,
+      })
+
+      totalJuros += juros
+      saldoDevedor -= amortizacao
     }
-    return { labels, data };
-  }, [sacRows]);
 
-  const screenWidth = Dimensions.get('window').width - 40;
+    setTabelaSAC(tabela)
+    setResumo({
+      valorFinanciado,
+      totalJuros,
+      totalPago: valorFinanciado + totalJuros,
+      primeiraParcela: tabela[0]?.prestacao || 0,
+      ultimaParcela: tabela[tabela.length - 1]?.prestacao || 0,
+    })
+  }
+
+  const formatCurrency = (value) => {
+    return value.toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    })
+  }
+
+  const renderParcela = ({ item }) => (
+    <View style={styles.parcelaRow}>
+      <Text style={styles.parcelaNumber}>{item.parcela}</Text>
+      <Text style={styles.parcelaValue}>{formatCurrency(item.prestacao)}</Text>
+      <Text style={styles.parcelaJuros}>{formatCurrency(item.juros)}</Text>
+      <Text style={styles.parcelaAmort}>{formatCurrency(item.amortizacao)}</Text>
+    </View>
+  )
+
+  const navegarParaSAC = () => {
+    const searchParams = new URLSearchParams({
+      valorFinanciado: params.valorFinanciado?.toString() || "",
+      prazo: params.prazo?.toString() || "",
+      juros: params.juros?.toString() || "",
+    })
+
+    router.push(`/sac?${searchParams.toString()}`)
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 20 }}>
-      <Text style={styles.title}>Resultados</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.label}>Valor financiado:</Text>
-        <Text style={styles.value}>R$ {principal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-        <Text style={styles.label}>Prazo:</Text>
-        <Text style={styles.value}>{prazoAnos} anos ({months} meses)</Text>
-        <Text style={styles.label}>Taxa anual:</Text>
-        <Text style={styles.value}>{taxaAnual}% a.a.</Text>
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Resultados da Simulação</Text>
+        <Text style={styles.subtitle}>Sistema SAC</Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Parcelas (SAC)</Text>
-        <Text style={styles.label}>Primeira parcela: R$ {sacRows[0]?.prestacao.toFixed(2)}</Text>
-        <Text style={styles.label}>Última parcela: R$ {sacRows[sacRows.length - 1]?.prestacao.toFixed(2)}</Text>
-        <Text style={styles.label}>Total pago: R$ {sacRows.reduce((s, r) => s + r.prestacao, 0).toFixed(2)}</Text>
+      <View style={styles.resumoCard}>
+        <Text style={styles.cardTitle}>Resumo do Financiamento</Text>
+
+        <View style={styles.resumoItem}>
+          <Text style={styles.resumoLabel}>Valor Financiado:</Text>
+          <Text style={styles.resumoValue}>{formatCurrency(resumo.valorFinanciado || 0)}</Text>
+        </View>
+
+        <View style={styles.resumoItem}>
+          <Text style={styles.resumoLabel}>Total de Juros:</Text>
+          <Text style={[styles.resumoValue, styles.jurosText]}>{formatCurrency(resumo.totalJuros || 0)}</Text>
+        </View>
+
+        <View style={styles.resumoItem}>
+          <Text style={styles.resumoLabel}>Total a Pagar:</Text>
+          <Text style={[styles.resumoValue, styles.totalText]}>{formatCurrency(resumo.totalPago || 0)}</Text>
+        </View>
+
+        <View style={styles.parcelasInfo}>
+          <View style={styles.parcelaInfo}>
+            <Text style={styles.parcelaInfoLabel}>1ª Parcela</Text>
+            <Text style={styles.parcelaInfoValue}>{formatCurrency(resumo.primeiraParcela || 0)}</Text>
+          </View>
+          <View style={styles.parcelaInfo}>
+            <Text style={styles.parcelaInfoLabel}>Última Parcela</Text>
+            <Text style={styles.parcelaInfoValue}>{formatCurrency(resumo.ultimaParcela || 0)}</Text>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Comparação (Price)</Text>
-        <Text style={styles.label}>20 anos: R$ {comp20.monthly.toFixed(2)} — Total: R$ {comp20.total.toFixed(2)}</Text>
-        <Text style={styles.label}>30 anos: R$ {comp30.monthly.toFixed(2)} — Total: R$ {comp30.total.toFixed(2)}</Text>
-      </View>
+      <TouchableOpacity style={styles.tabelaButton} onPress={navegarParaSAC}>
+        <Text style={styles.tabelaButtonText}>Ver Tabela Completa</Text>
+      </TouchableOpacity>
 
-      <View style={{ marginVertical: 20 }}>
-        <Text style={[styles.cardTitle, { marginBottom: 10 }]}>Gráfico de amortização (SAC)</Text>
-        <LineChart
-          data={{ labels: chartData.labels, datasets: [{ data: chartData.data }] }}
-          width={screenWidth}
-          height={220}
-          yAxisLabel="R$ "
-          yAxisSuffix=""
-          chartConfig={{
-            backgroundGradientFrom: '#eef2ff',
-            backgroundGradientTo: '#c7d2fe',
-            decimalPlaces: 2,
-            color: (opacity = 1) => `rgba(59, 59, 152, ${opacity})`,
-            labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-            style: { borderRadius: 16 },
-          }}
-          style={{ borderRadius: 16 }}
-        />
-      </View>
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => router.push({ pathname: '/sac', params: { valorImovel, entrada, prazoAnos, taxaAnual } })}
-        >
-          <Text style={styles.buttonText}>Ver Tabela SAC</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.button, { backgroundColor: '#999' }]} onPress={() => router.push('/')}>
-          <Text style={styles.buttonText}>Voltar</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity style={styles.novaSimulacaoButton} onPress={() => router.push("/")}>
+        <Text style={styles.novaSimulacaoButtonText}>Nova Simulação</Text>
+      </TouchableOpacity>
     </ScrollView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f6fa', padding: 20 },
-  title: { fontSize: 28, fontWeight: '700', color: '#3b3b98', marginBottom: 20 },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
+  container: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+  },
+  header: {
+    alignItems: "center",
     padding: 20,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    paddingTop: 40,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#1e293b",
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#64748b",
+  },
+  resumoCard: {
+    backgroundColor: "white",
+    margin: 20,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  cardTitle: { fontSize: 18, fontWeight: '600', marginBottom: 10, color: '#3b3b98' },
-  label: { fontSize: 16, color: '#333', marginBottom: 5 },
-  value: { fontSize: 16, fontWeight: '500', marginBottom: 10 },
-  button: {
-    backgroundColor: '#3b3b98',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 10,
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1e293b",
+    marginBottom: 16,
+    textAlign: "center",
   },
-  buttonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-});
+  resumoItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
+  },
+  resumoLabel: {
+    fontSize: 16,
+    color: "#64748b",
+  },
+  resumoValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  jurosText: {
+    color: "#ef4444",
+  },
+  totalText: {
+    color: "#3b82f6",
+    fontSize: 18,
+  },
+  parcelasInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#f1f5f9",
+  },
+  parcelaInfo: {
+    alignItems: "center",
+    flex: 1,
+  },
+  parcelaInfoLabel: {
+    fontSize: 14,
+    color: "#64748b",
+    marginBottom: 4,
+  },
+  parcelaInfoValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#059669",
+  },
+  tabelaButton: {
+    backgroundColor: "#3b82f6",
+    margin: 20,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: "center",
+  },
+  tabelaButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  novaSimulacaoButton: {
+    backgroundColor: "white",
+    margin: 20,
+    marginTop: 0,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#3b82f6",
+  },
+  novaSimulacaoButtonText: {
+    color: "#3b82f6",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+})

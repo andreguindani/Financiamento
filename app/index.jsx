@@ -1,129 +1,206 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
+"use client"
+
+import { useState } from "react"
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native"
+import { router } from "expo-router"
 
 export default function Home() {
-  const router = useRouter();
-  const [valorImovel, setValorImovel] = useState('');
-  const [entrada, setEntrada] = useState('');
-  const [prazoAnos, setPrazoAnos] = useState('');
-  const [taxaAnual, setTaxaAnual] = useState('');
+  const [valorImovel, setValorImovel] = useState("")
+  const [entrada, setEntrada] = useState("")
+  const [prazo, setPrazo] = useState("")
+  const [juros, setJuros] = useState("")
 
-  function toNumber(v) {
-    const n = Number(String(v).replace(/[^0-9.-]+/g, ''));
-    return isNaN(n) ? 0 : n;
+  const formatCurrency = (value) => {
+    const numericValue = value.replace(/\D/g, "")
+    const formattedValue = (numericValue / 100).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    })
+    return formattedValue
   }
 
-  function calcular() {
+  const handleValorImovelChange = (text) => {
+    const formatted = formatCurrency(text)
+    setValorImovel(formatted)
+  }
+
+  const handleEntradaChange = (text) => {
+    const formatted = formatCurrency(text)
+    setEntrada(formatted)
+  }
+
+  const parseValue = (value) => {
+    return Number.parseFloat(value.replace(/[^\d,]/g, "").replace(",", ".")) || 0
+  }
+
+  const handleSimular = () => {
+    const valorImovelNum = parseValue(valorImovel)
+    const entradaNum = parseValue(entrada)
+    const prazoNum = Number.parseInt(prazo) || 0
+    const jurosNum = Number.parseFloat(juros.replace(",", ".")) || 0
+
+    if (!valorImovelNum || !prazoNum || !jurosNum) {
+      Alert.alert("Erro", "Por favor, preencha todos os campos obrigatórios")
+      return
+    }
+
+    if (entradaNum >= valorImovelNum) {
+      Alert.alert("Erro", "O valor da entrada deve ser menor que o valor do imóvel")
+      return
+    }
+
+    const valorFinanciado = valorImovelNum - entradaNum
+
     router.push({
-      pathname: '/results',
+      pathname: "/results",
       params: {
-        valorImovel: toNumber(valorImovel),
-        entrada: toNumber(entrada),
-        prazoAnos: prazoAnos,
-        taxaAnual: taxaAnual,
+        valorImovel: valorImovelNum,
+        entrada: entradaNum,
+        valorFinanciado,
+        prazo: prazoNum,
+        juros: jurosNum,
       },
-    });
+    })
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 20 }}>
-      <Text style={styles.title}>🏠 Simulador de Financiamento</Text>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Simulador de Financiamento</Text>
+          <Text style={styles.subtitle}>Sistema SAC - Parcelas Decrescentes</Text>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Valor do imóvel (R$)</Text>
-        <TextInput
-          value={valorImovel}
-          onChangeText={setValorImovel}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+        <View style={styles.form}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Valor do Imóvel *</Text>
+            <TextInput
+              style={styles.input}
+              value={valorImovel}
+              onChangeText={handleValorImovelChange}
+              placeholder="R$ 0,00"
+              keyboardType="numeric"
+            />
+          </View>
 
-        <Text style={styles.label}>Entrada (R$)</Text>
-        <TextInput
-          value={entrada}
-          onChangeText={setEntrada}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Valor da Entrada</Text>
+            <TextInput
+              style={styles.input}
+              value={entrada}
+              onChangeText={handleEntradaChange}
+              placeholder="R$ 0,00"
+              keyboardType="numeric"
+            />
+          </View>
 
-        <Text style={styles.label}>Prazo (anos)</Text>
-        <TextInput
-          value={prazoAnos}
-          onChangeText={setPrazoAnos}
-          keyboardType="numeric"
-          style={styles.input}
-        />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Prazo (meses) *</Text>
+            <TextInput
+              style={styles.input}
+              value={prazo}
+              onChangeText={setPrazo}
+              placeholder="360"
+              keyboardType="numeric"
+            />
+          </View>
 
-        <Text style={styles.label}>Taxa anual (%)</Text>
-        <TextInput
-          value={taxaAnual}
-          onChangeText={setTaxaAnual}
-          keyboardType="numeric"
-          style={styles.input}
-        />
-      </View>
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Taxa de Juros (% ao mês) *</Text>
+            <TextInput
+              style={styles.input}
+              value={juros}
+              onChangeText={setJuros}
+              placeholder="0,75"
+              keyboardType="numeric"
+            />
+          </View>
 
-      <TouchableOpacity style={styles.button} onPress={calcular}>
-        <Text style={styles.buttonText}>Calcular</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
+          <TouchableOpacity style={styles.button} onPress={handleSimular}>
+            <Text style={styles.buttonText}>Simular Financiamento</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f6fa',
+    backgroundColor: "#f8fafc",
+  },
+  scrollContainer: {
+    flexGrow: 1,
     padding: 20,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 30,
+    paddingTop: 20,
   },
   title: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#3b3b98',
-    marginBottom: 20,
+    fontWeight: "bold",
+    color: "#1e293b",
+    textAlign: "center",
+    marginBottom: 8,
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+  subtitle: {
+    fontSize: 16,
+    color: "#64748b",
+    textAlign: "center",
+  },
+  form: {
+    backgroundColor: "white",
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5, // para Android
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  inputGroup: {
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 5,
-    color: '#333',
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#dcdde1',
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    borderColor: "#d1d5db",
+    borderRadius: 8,
+    padding: 12,
     fontSize: 16,
-    marginBottom: 15,
-    backgroundColor: '#f1f2f6',
+    backgroundColor: "#f9fafb",
   },
   button: {
-    backgroundColor: '#3b3b98',
-    paddingVertical: 15,
-    borderRadius: 15,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 5,
+    backgroundColor: "#3b82f6",
+    borderRadius: 8,
+    padding: 16,
+    alignItems: "center",
+    marginTop: 10,
   },
   buttonText: {
-    color: '#fff',
+    color: "white",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
   },
-});
+})
